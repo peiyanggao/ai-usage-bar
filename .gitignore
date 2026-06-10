@@ -1,0 +1,10 @@
+.build/
+build/
+.cache/
+.local-home/
+.swiftpm/
+.DS_Store
+*.xcodeproj
+*.xcworkspace
+# Local Claude/agent state (not part of the app)
+.claude/
