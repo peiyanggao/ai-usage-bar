@@ -656,6 +656,139 @@ final class DualTouchBarView: NSView {
     }
 }
 
+// MARK: - Demo data (for screenshots / preview)
+
+enum DemoData {
+    static func claude() -> UsageSnapshot {
+        var snap = UsageSnapshot()
+        let cal = Calendar.current
+        snap.fiveHour = UsageWindow(title: "5 小时", usedPercent: 55,
+                                    resetsAt: cal.date(byAdding: .minute, value: 132, to: Date()))
+        snap.weekly = UsageWindow(title: "周限额", usedPercent: 12,
+                                  resetsAt: cal.date(byAdding: .hour, value: 96, to: Date()))
+        return snap
+    }
+
+    static func codex() -> UsageSnapshot {
+        var snap = UsageSnapshot()
+        let cal = Calendar.current
+        snap.fiveHour = UsageWindow(title: "5 小时", usedPercent: 8,
+                                    resetsAt: cal.date(byAdding: .minute, value: 218, to: Date()))
+        snap.weekly = UsageWindow(title: "周限额", usedPercent: 86,
+                                  resetsAt: cal.date(byAdding: .hour, value: 51, to: Date()))
+        return snap
+    }
+}
+
+// MARK: - Preview canvas / menu-bar preview (for screenshots)
+
+final class CanvasView: NSView {
+    var background: NSColor = .clear
+    let content: NSView
+
+    init(content: NSView, background: NSColor) {
+        self.content = content
+        self.background = background
+        super.init(frame: content.frame)
+        addSubview(content)
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    override var isFlipped: Bool { false }
+    override func draw(_ dirtyRect: NSRect) {
+        background.setFill()
+        bounds.fill()
+        super.draw(dirtyRect)
+    }
+}
+
+/// Draws a faithful preview of the menu-bar item: "Claude NN%" + battery glyph.
+final class MenuBarPreview: NSView {
+    var remaining: Int = 73
+    override var isFlipped: Bool { true }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        let text = "Claude \(remaining)%"
+        let font = NSFont.systemFont(ofSize: 13, weight: .regular)
+        let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.white]
+        let size = (text as NSString).size(withAttributes: attrs)
+        let glyphSize: CGFloat = 18
+        let spacing: CGFloat = 5
+        let totalW = size.width + spacing + glyphSize
+        let startX = (bounds.width - totalW) / 2
+        let midY = bounds.height / 2
+        (text as NSString).draw(at: NSPoint(x: startX, y: midY - size.height / 2), withAttributes: attrs)
+
+        let symbol = AppDelegate.batterySymbol(for: remaining)
+        if let img = NSImage(systemSymbolName: symbol, accessibilityDescription: nil) {
+            let cfg = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
+            let tinted = (img.withSymbolConfiguration(cfg) ?? img)
+            tinted.isTemplate = true
+            let glyphRect = NSRect(x: startX + size.width + spacing,
+                                   y: midY - glyphSize / 2, width: glyphSize, height: glyphSize)
+            NSColor.white.set()
+            tinted.draw(in: glyphRect, from: .zero, operation: .sourceOver, fraction: 1,
+                        respectFlipped: true, hints: nil)
+        }
+    }
+}
+
+// MARK: - Offscreen screenshot rendering
+
+enum Screenshot {
+    static func renderAll(toDirectory dir: String) {
+        let fm = FileManager.default
+        try? fm.createDirectory(atPath: dir, withIntermediateDirectories: true)
+
+        // Dropdown: the two-row segmented bars from the menu.
+        let dropdown = UsageView(frame: NSRect(x: 0, y: 0, width: 460, height: 104))
+        dropdown.snapshot = DemoData.claude()
+        write(CanvasView(content: dropdown, background: .windowBackgroundColor),
+              to: dir, name: "dropdown.png")
+
+        // Touch Bar: Claude Code | Codex side by side on a black strip.
+        let touch = DualTouchBarView(frame: NSRect(x: 0, y: 0, width: 660, height: 30))
+        touch.claude = DemoData.claude()
+        touch.codex = DemoData.codex()
+        write(CanvasView(content: touch, background: .black), to: dir, name: "touchbar.png")
+
+        // Menu bar: "Claude 73%" + battery glyph on a dark bar.
+        let menubar = MenuBarPreview(frame: NSRect(x: 0, y: 0, width: 150, height: 28))
+        menubar.remaining = 73
+        write(CanvasView(content: menubar, background: NSColor(white: 0.13, alpha: 1)),
+              to: dir, name: "menubar.png")
+
+        FileHandle.standardError.write(Data("Rendered screenshots to \(dir)\n".utf8))
+    }
+
+    private static func write(_ view: NSView, to dir: String, name: String) {
+        view.appearance = NSAppearance(named: .darkAqua)
+        guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
+        rep.size = view.bounds.size
+        view.cacheDisplay(in: view.bounds, to: rep)
+        // Render at 2x for crisp output.
+        guard let scaled = scale2x(rep, size: view.bounds.size),
+              let png = scaled.representation(using: .png, properties: [:]) else { return }
+        let path = (dir as NSString).appendingPathComponent(name)
+        try? png.write(to: URL(fileURLWithPath: path))
+    }
+
+    private static func scale2x(_ rep: NSBitmapImageRep, size: NSSize) -> NSBitmapImageRep? {
+        let w = Int(size.width * 2), h = Int(size.height * 2)
+        guard let out = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: w, pixelsHigh: h,
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else { return rep }
+        out.size = size
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: out)
+        NSGraphicsContext.current?.imageInterpolation = .high
+        NSImage(cgImage: rep.cgImage!, size: size).draw(in: NSRect(origin: .zero, size: size))
+        NSGraphicsContext.restoreGraphicsState()
+        return out
+    }
+}
+
 // MARK: - App
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSTouchBarDelegate {
@@ -669,16 +802,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSTouc
     private var timer: Timer?
     private var isRefreshing = false
     private var snapshot: UsageSnapshot?
+    private let demo: Bool
+
+    init(demo: Bool = false) {
+        self.demo = demo
+        super.init()
+    }
 
     func applicationDidFinishLaunching(_ note: Notification) {
         NSApp.setActivationPolicy(.accessory)
         configureStatusItem()
         configureMenu()
         configureTouchBar()
-        refresh()
-        timer = Timer.scheduledTimer(withTimeInterval: Config.pollInterval, repeats: true) { [weak self] _ in
-            self?.refresh()
+        if demo {
+            applyDemo()
+        } else {
+            refresh()
+            timer = Timer.scheduledTimer(withTimeInterval: Config.pollInterval, repeats: true) { [weak self] _ in
+                self?.refresh()
+            }
         }
+    }
+
+    private func applyDemo() {
+        let claude = DemoData.claude()
+        let codex = DemoData.codex()
+        snapshot = claude
+        menuUsageView.snapshot = claude
+        touchUsageView.claude = claude
+        touchUsageView.codex = codex
+        updateStatusItem(with: claude)
     }
 
     func applicationWillTerminate(_ note: Notification) { timer?.invalidate(); codexClient.stop() }
@@ -822,7 +975,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSTouc
         statusItem.button?.toolTip = "Claude 剩余额度：5 小时 \(five.map { "\($0)%" } ?? "--")，周 \(week.map { "\($0)%" } ?? "--")"
     }
 
-    private static func batterySymbol(for remaining: Int) -> String {
+    static func batterySymbol(for remaining: Int) -> String {
         switch remaining {
         case ..<13: return "battery.0percent"
         case ..<38: return "battery.25percent"
@@ -848,7 +1001,16 @@ private extension NSTouchBarItem.Identifier {
 
 // MARK: - Entry
 
+let env = ProcessInfo.processInfo.environment
+
+if let renderDir = env["AI_USAGE_RENDER"], !renderDir.isEmpty {
+    // Offscreen render mode: generate the README screenshots, then exit.
+    _ = NSApplication.shared           // initialize AppKit for drawing
+    Screenshot.renderAll(toDirectory: renderDir)
+    exit(0)
+}
+
 let app = NSApplication.shared
-let delegate = AppDelegate()
+let delegate = AppDelegate(demo: env["AI_USAGE_DEMO"] == "1")
 app.delegate = delegate
 app.run()
