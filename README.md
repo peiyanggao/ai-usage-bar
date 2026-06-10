@@ -8,6 +8,25 @@ segmented "battery" bars with remaining percentage and reset time.
 > Anthropic or OpenAI. "Claude" and "Codex" are trademarks of their respective owners.
 > It uses **undocumented** local/remote interfaces that may change or break at any time.
 
+## Screenshots
+
+<table>
+  <tr>
+    <td align="center"><sub><b>Menu bar</b></sub></td>
+    <td align="center"><sub><b>Dropdown</b></sub></td>
+  </tr>
+  <tr>
+    <td valign="top"><img src="docs/screenshots/menubar.png"  alt="Menu bar: Claude NN% with battery icon" width="340"></td>
+    <td valign="top"><img src="docs/screenshots/dropdown.png" alt="Dropdown: 5-hour and weekly segmented bars" width="340"></td>
+  </tr>
+</table>
+
+<p align="center"><sub><b>Touch Bar — Claude Code | Codex</b></sub></p>
+<p align="center"><img src="docs/screenshots/touchbar.png" alt="Touch Bar showing Claude Code and Codex usage side by side" width="680"></p>
+
+<sub>📸 Screenshots are placeholders until captured — see
+<a href="docs/screenshots/README.md"><code>docs/screenshots/</code></a> for how to add them.</sub>
+
 ## Features
 
 - **Menu bar**: a battery icon + `Claude NN%` (remaining of the 5-hour window).
